@@ -1,0 +1,122 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+*.sublime-project
+*.sublime-workspace
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# 项目生成的文件
+# 生成的视频文件
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.webm
+
+# 生成的音频文件
+*.wav
+*.mp3
+*.ogg
+*.flac
+*.aac
+
+# 生成的图片文件
+output_images/
+generated_images/
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+
+# 字幕文件
+*.srt
+*.vtt
+*.ass
+*.ssa
+
+# 故事内容文件
+stories/
+*.json
+!package.json
+!package-lock.json
+
+# 时间戳文件
+timestamps/
+*.timestamp.json
+
+# 临时文件
+temp/
+tmp/
+*.tmp
+*.log
+*.cache
+
+# 配置文件（如果包含敏感信息）
+config.local.json
+settings.local.json
+
+# 模型文件（如果本地存储）
+models/
+*.bin
+*.safetensors
+*.pt
+*.pth
+*.ckpt
+
+# 测试覆盖率
+.coverage
+htmlcov/
+.pytest_cache/
+.tox/
+
+# 系统文件
+Thumbs.db
+.DS_Store
+*.bak
+*.swp
+
