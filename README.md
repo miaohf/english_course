@@ -72,9 +72,13 @@ video = compose_video(audio_files, images, subtitle_file, timestamp_json)
 ```
 english_courses/
 ├── README.md                 # 项目说明文档
+├── pyproject.toml           # 项目依赖配置
+├── logger_config.py         # 日志配置模块（loguru）
 ├── story_generator/          # 故事生成模块
-│   ├── vllm_client.py       # vLLM 客户端调用
-│   └── story_processor.py   # 故事处理和内容提取
+│   ├── __init__.py          # 模块导出
+│   ├── schemas.py           # Pydantic 数据模型定义
+│   ├── story_processor.py   # 故事处理器（LangChain + 结构化输出）
+│   └── vllm_client.py       # vLLM 客户端（向后兼容）
 ├── tts_module/              # TTS 语音合成模块
 │   ├── tts_engine.py        # TTS 引擎封装
 │   └── subtitle_generator.py # 字幕生成
@@ -83,13 +87,21 @@ english_courses/
 │   └── image_processor.py   # 图像处理和时间戳生成
 ├── video_composer/          # 视频合成模块
 │   └── ffmpeg_composer.py   # FFmpeg 视频合成
+├── test_story_generation.py # 故事生成测试脚本
 └── main.py                  # 主程序入口
 ```
 
 ## 技术细节
 
+### 故事生成模块特性
+- **中文主题自动翻译**：输入中文主题自动翻译为英文后生成英文故事
+- **结构化输出**：使用 LangChain + Pydantic 实现结构化 JSON 输出
+- **思考内容处理**：模型的 `<think>` 内容记录到日志但不保存到最终 JSON
+- **日志规范**：使用 loguru 配置日志，所有日志输出为英文
+
 ### vLLM 配置
 - 支持本地部署的大语言模型
+- 使用 LangChain 的 ChatOpenAI 接口调用 vLLM（兼容 OpenAI API）
 - 可配置模型路径和 API 端点
 - 支持自定义提示词模板
 

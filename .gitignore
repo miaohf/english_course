@@ -85,6 +85,10 @@ stories/
 !package.json
 !package-lock.json
 
+# 输出目录（保留目录结构）
+outputs/
+!outputs/.gitkeep
+
 # 时间戳文件
 timestamps/
 *.timestamp.json
