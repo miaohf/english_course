@@ -136,6 +136,8 @@ def main():
             failed_topics.append({"id": topic_id, "scene": topic_scene})
             logger.error(f"✗ Error processing {topic_scene}: {e}")
             continue
+        
+        break
     
     # 输出总结
     logger.info("")

@@ -27,6 +27,9 @@ class FileOperations:
             step_name: 当前步骤名称
         """
         output_dir = os.path.dirname(base_path) if os.path.dirname(base_path) else "."
+        # 确保输出目录存在
+        if output_dir and output_dir != ".":
+            os.makedirs(output_dir, exist_ok=True)
         
         # 如果生成了新内容，立即保存对应的 Markdown
         # 文件名不包含时间戳，使用固定的文件名
@@ -79,13 +82,17 @@ class FileOperations:
             story_content: 故事内容对象
             filepath: JSON 文件保存路径
         """
+        # 确保输出目录存在
+        output_dir = os.path.dirname(filepath)
+        if output_dir:
+            os.makedirs(output_dir, exist_ok=True)
+        
         # 保存 JSON 文件
         with open(filepath, 'w', encoding='utf-8') as f:
             f.write(story_content.to_json())
         logger.info(f"Story content saved to: {filepath}")
         
         # 生成对应的 Markdown 文件（用于方便审阅长文本字段）
-        output_dir = os.path.dirname(filepath)
         
         # 保存故事框架为 Markdown（文件名不包含时间戳）
         framework_md_path = os.path.join(output_dir, "story_framework.md")

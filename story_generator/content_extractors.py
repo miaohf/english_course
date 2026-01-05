@@ -4,11 +4,18 @@
 包含从故事中提取关键句子和词汇的方法
 """
 
+import time
 from typing import List
 from langchain_core.prompts import ChatPromptTemplate
 
 from .schemas import WordItem
 from .internal_schemas import ExtractedSentences, ExtractedWords
+from .prompts import (
+    EXTRACT_KEY_SENTENCES_SYSTEM,
+    EXTRACT_KEY_SENTENCES_USER,
+    EXTRACT_NEW_WORDS_SYSTEM,
+    EXTRACT_NEW_WORDS_USER,
+)
 from logger_config import get_logger
 
 logger = get_logger()
@@ -37,15 +44,11 @@ class ContentExtractors:
             重要句子列表
         """
         logger.info("<cyan>Extracting key sentences from story</cyan>")
+        start_time = time.time()
         
         prompt = ChatPromptTemplate.from_messages([
-            ("system", """You are an English teaching expert.
-Extract 5-8 key English sentences from the story that are:
-1. Most practical and commonly used
-2. Good examples of natural English
-3. Suitable for learners to memorize and practice
-4. Arranged in order of appearance in the story"""),
-            ("user", "Extract key sentences from this story:\n\n{story}")
+            ("system", EXTRACT_KEY_SENTENCES_SYSTEM),
+            ("user", EXTRACT_KEY_SENTENCES_USER)
         ])
         
         # 使用结构化输出
@@ -55,7 +58,8 @@ Extract 5-8 key English sentences from the story that are:
         result = chain.invoke({"story": story})
         sentences = result.sentences
         
-        logger.info(f"<green>Extracted {len(sentences)} key sentences</green>")
+        elapsed = time.time() - start_time
+        logger.info(f"<green>Extracted {len(sentences)} key sentences in {elapsed:.2f} seconds</green>")
         return sentences
     
     def extract_new_words(self, story: str) -> List[WordItem]:
@@ -69,15 +73,11 @@ Extract 5-8 key English sentences from the story that are:
             新词列表
         """
         logger.info("<cyan>Extracting new vocabulary from story</cyan>")
+        start_time = time.time()
         
         prompt = ChatPromptTemplate.from_messages([
-            ("system", """You are an English vocabulary expert.
-Extract 10-15 useful vocabulary words from the story.
-For each word, provide:
-- The English word or phrase
-- Chinese meaning
-- An example sentence"""),
-            ("user", "Extract vocabulary from this story:\n\n{story}")
+            ("system", EXTRACT_NEW_WORDS_SYSTEM),
+            ("user", EXTRACT_NEW_WORDS_USER)
         ])
         
         # 使用结构化输出
@@ -87,9 +87,11 @@ For each word, provide:
         try:
             result = chain.invoke({"story": story})
             words = result.words
-            logger.info(f"<green>Extracted {len(words)} vocabulary words</green>")
+            elapsed = time.time() - start_time
+            logger.info(f"<green>Extracted {len(words)} vocabulary words in {elapsed:.2f} seconds</green>")
             return words
         except Exception as e:
-            logger.warning(f"Vocabulary extraction failed: {e}")
+            elapsed = time.time() - start_time
+            logger.warning(f"Vocabulary extraction failed after {elapsed:.2f} seconds: {e}")
             return []
 

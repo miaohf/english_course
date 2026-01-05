@@ -7,6 +7,7 @@
 
 import os
 import re
+import time
 from typing import Optional
 
 from langchain_openai import ChatOpenAI
@@ -98,26 +99,6 @@ class StoryProcessor:
         """将中文主题翻译成英文"""
         return self.story_generators.translate_topic(chinese_topic)
     
-    def generate_story_framework(self, topic: str, english_topic: str = None) -> str:
-        """生成故事框架"""
-        return self.story_generators.generate_story_framework(topic, english_topic)
-    
-    def refine_story(self, framework: str) -> str:
-        """细化故事情节"""
-        return self.story_generators.refine_story(framework)
-    
-    def generate_opening(self, topic: str, story_summary: str) -> str:
-        """生成视频开场白"""
-        return self.story_generators.generate_opening(topic, story_summary)
-    
-    def generate_closing(self, topic: str, story_summary: str) -> str:
-        """生成视频结束语"""
-        return self.story_generators.generate_closing(topic, story_summary)
-    
-    def generate_summary(self, topic: str, story: str) -> str:
-        """生成课程总结"""
-        return self.story_generators.generate_summary(topic, story)
-    
     def extract_key_sentences(self, story: str):
         """提取重要句子"""
         return self.content_extractors.extract_key_sentences(story)
@@ -126,9 +107,14 @@ class StoryProcessor:
         """提取新词"""
         return self.content_extractors.extract_new_words(story)
     
-    def generate_video_script(self, detailed_story: str, framework: str):
+    def generate_video_script(self, detailed_story: str = None, framework: str = None, scene_details = None, story_summary: dict = None):
         """生成视频剧本"""
-        return self.video_script_generator.generate_video_script(detailed_story, framework)
+        return self.video_script_generator.generate_video_script(
+            detailed_story=detailed_story,
+            framework=framework,
+            scene_details=scene_details,
+            story_summary=story_summary
+        )
     
     def _save_progress(self, story_content: StoryContent, base_path: str, step_name: str):
         """保存生成进度（增量保存）"""
@@ -146,10 +132,12 @@ class StoryProcessor:
         """
         生成完整的故事内容（支持增量保存）
         
-        新的三步流程：
-        1. 生成故事框架
-        2. 具体化整个故事情节
-        3. 从完整故事中提取所有需要的内容（视频剧本，包含开场/转场/结束、角色对话、场景描述等）
+        优化流程（方案A：按任务类型分离）：
+        1. 翻译主题
+        2. 生成剧情概要（单独API调用，任务类型：故事规划）
+        3. 生成所有场景描述（一次性生成，任务类型：场景规划）
+        4. 生成所有场景详细内容（一次性生成，任务类型：内容创作）
+        5. 提取脚本（单独API调用，任务类型：结构化提取）
         
         Args:
             topic: 场景主题（中文或英文）
@@ -167,7 +155,8 @@ class StoryProcessor:
             os.makedirs(output_dir, exist_ok=True)
             base_path = os.path.join(output_dir, base_filename)
         
-        # 0. 翻译主题（如果是中文）
+        # 步骤1: 翻译主题（如果是中文）
+        logger.info("Step 1/5: Translating topic...")
         if re.search(r'[\u4e00-\u9fff]', topic):
             english_topic = self.translate_topic(topic)
         else:
@@ -186,24 +175,41 @@ class StoryProcessor:
             video_script=None
         )
         
-        # 步骤1: 生成故事框架
-        logger.info("Step 1/3: Generating story framework...")
-        framework = self.generate_story_framework(topic, english_topic)
-        story_content.story_framework = framework
+        # 步骤2: 生成剧情概要（方案A：按任务类型分离）
+        logger.info("Step 2/5: Generating story summary...")
+        story_summary = self.story_generators.generate_story_summary(topic, english_topic)
+        # 将概要保存到story_framework字段（向后兼容）
+        story_content.story_framework = f"""Summary: {story_summary['summary']}
+
+Characters: {story_summary['characters']}
+
+Key Expressions:
+{chr(10).join(f"- {exp}" for exp in story_summary['key_expressions'])}"""
+        story_content.summary = story_summary['summary']
         if base_path:
-            self._save_progress(story_content, base_path, "framework")
+            self._save_progress(story_content, base_path, "summary")
         
-        # 步骤2: 具体化整个故事情节
-        logger.info("Step 2/3: Refining story with detailed dialogues...")
-        detailed_story = self.refine_story(framework)
-        story_content.detailed_story = detailed_story
+        # 步骤3: 生成所有场景描述（一次性生成所有场景描述）
+        logger.info("Step 3/5: Generating scene descriptions (all scenes in one pass)...")
+        scene_descriptions_obj = self.story_generators.generate_scene_descriptions(story_summary, english_topic)
         if base_path:
-            self._save_progress(story_content, base_path, "detailed_story")
+            self._save_progress(story_content, base_path, "scene_descriptions")
         
-        # 步骤3: 从完整故事中提取所有需要的内容
-        # 包括：开场/转场/结束、角色对话、场景描述（用于生成插图）等
-        logger.info("Step 3/3: Extracting video script (opening, dialogues, transitions, closing, scene descriptions)...")
-        video_script = self.generate_video_script(detailed_story, framework)
+        # 步骤4: 生成所有场景详细内容（一次性生成所有场景详细内容）
+        logger.info("Step 4/5: Generating detailed scene content (all scenes in one pass)...")
+        scene_details_obj = self.story_generators.refine_scenes(story_summary, scene_descriptions_obj, english_topic)
+        # 将所有场景内容合并为detailed_story（向后兼容）
+        detailed_story_parts = [f"=== {scene.scene_id} ===\n{scene.detailed_content}" for scene in scene_details_obj.scenes]
+        story_content.detailed_story = "\n\n".join(detailed_story_parts)
+        if base_path:
+            self._save_progress(story_content, base_path, "detailed_scenes")
+        
+        # 步骤5: 提取脚本
+        logger.info("Step 5/5: Extracting video script...")
+        video_script = self.generate_video_script(
+            scene_details=scene_details_obj,
+            story_summary=story_summary
+        )
         story_content.video_script = video_script
         
         # 从视频剧本中提取开场和结束（用于向后兼容）
@@ -213,20 +219,6 @@ class StoryProcessor:
                     story_content.opening = line.content
                 elif line.line_type == "closing" and not story_content.closing:
                     story_content.closing = line.content
-        
-        # 可选：生成课程总结（用于学习材料，不影响视频制作流程）
-        # 如果需要，可以取消注释以下代码
-        # logger.info("Generating lesson summary (optional)...")
-        # summary = self.generate_summary(english_topic, detailed_story)
-        # story_content.summary = summary
-        
-        # 可选：提取重要句子和新词（用于学习材料）
-        # 如果需要，可以取消注释以下代码
-        # logger.info("Extracting key sentences and new words (optional)...")
-        # key_sentences = self.extract_key_sentences(detailed_story)
-        # story_content.key_sentences = key_sentences
-        # new_words = self.extract_new_words(detailed_story)
-        # story_content.new_words = new_words
         
         if base_path:
             self._save_progress(story_content, base_path, "script")

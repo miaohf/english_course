@@ -4,11 +4,24 @@
 从详细故事中生成视频剧本
 """
 
+import time
 import traceback
 from langchain_core.prompts import ChatPromptTemplate
 
 from .schemas import Character, Scene, ScriptLine, VideoScript
-from .internal_schemas import GeneratedScript
+from .internal_schemas import (
+    GeneratedCharactersAndScenes,
+    GeneratedDialogues,
+    GeneratedOpeningAndClosing
+)
+from .prompts import (
+    GENERATE_CHARACTERS_AND_SCENES_SYSTEM,
+    GENERATE_CHARACTERS_AND_SCENES_USER,
+    GENERATE_DIALOGUES_SYSTEM,
+    GENERATE_DIALOGUES_USER,
+    GENERATE_OPENING_CLOSING_SYSTEM,
+    GENERATE_OPENING_CLOSING_USER,
+)
 from logger_config import get_logger
 
 logger = get_logger()
@@ -26,153 +39,119 @@ class VideoScriptGenerator:
         """
         self.llm = llm
     
-    def generate_video_script(self, detailed_story: str, framework: str) -> VideoScript:
+    def generate_video_script(self, detailed_story: str = None, framework: str = None, scene_details: list = None, story_summary: dict = None) -> VideoScript:
         """
-        从详细故事中生成视频剧本
+        从详细故事或场景内容中生成视频剧本（使用分步处理，更快）
         
         Args:
-            detailed_story: 详细故事文本
-            framework: 故事框架文本
+            detailed_story: 详细故事文本（旧方式，向后兼容）
+            framework: 故事框架文本（旧方式，向后兼容）
+            scene_details: 场景详细内容列表（新方式），每个元素包含scene_id和detailed_content
+            story_summary: 剧情概要字典（新方式），包含summary, characters, key_expressions
             
         Returns:
             视频剧本对象
         """
-        logger.info("<cyan>Generating video script from story</cyan>")
-        
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", """You are a video production script expert. Extract and structure a complete video script from the given story, including opening, dialogues, transitions, and closing.
-
-CRITICAL REQUIREMENTS:
-1. This is a REAL-LIFE scenario, NOT an English learning lesson. Characters have normal everyday conversations. NO references to "learning English", "practicing English", or educational content.
-
-2. Generate video opening (at the beginning):
-   - line_type: "opening"
-   - speaker_id: "NARRATOR"
-   - content: An engaging opening script (50-100 words) that:
-     * Greets viewers warmly
-     * Introduces the topic/scenario clearly
-     * Sets the context for the story
-     * Uses simple, clear English suitable for learners
-   - scene_id: null (opening is before any scene)
-
-3. Extract ALL characters who speak (1-2 main + supporting characters):
-   - Use REAL character names from the story (e.g., Alex, Sam, Emma)
-   - Each character needs: name, role (main/supporting), description (for image generation), gender (male/female/other), age_range (young/adult/elderly), personality
-
-4. Create MULTIPLE scenes with IDs (scene_1, scene_2, scene_3, etc.):
-   - IMPORTANT: For a 10-15 minute video, you MUST create 5-8 distinct scenes
-   - Divide the story into natural segments based on the story's natural flow:
-     * Location changes: When characters move to a different physical location
-     * Visual context changes: When the setting, background, or visual elements change significantly
-     * Story progression: When the conversation topic shifts or the relationship develops
-     * Time progression: When there's a natural break or transition in the narrative
-   - Each scene needs: scene_id, description (detailed visual description for image generation), location
-   - Each scene should represent a distinct visual moment that would require a different illustration
-   - Analyze the story carefully and identify natural break points where the visual representation should change
-   - Scenes can contain any number of characters (no limit on participants)
-   - Multiple characters can participate in the same scene
-   - Monologues (1 person speaking) are allowed
-   - Maintain the original chronological order of dialogues
-   - Adapt scene divisions to fit the specific story context and setting
-
-5. Extract ALL dialogues and assign to characters AND scenes:
-   - line_type: "dialogue" for character speech
-   - speaker: character's real name (e.g., Alex, Sam, Emma)
-   - speaker_id: same as speaker name (use real character name, NOT SPEAKER0/SPEAKER1)
-   - content: the actual dialogue text
-   - scene_id: which scene this belongs to (CRITICAL: distribute dialogues across ALL scenes, not just one)
-   - All characters can participate in dialogues within the same scene
-   - Preserve the original chronological order of all dialogues
-   - IMPORTANT: Dialogues must be distributed across multiple scenes based on story progression
-   - When location or context changes in the story, assign dialogues to a new scene
-
-6. Add scene transitions between scenes:
-   - line_type: "transition" for scene changes
-   - speaker_id: "NARRATOR"
-   - content: natural transition text that explains the scene change
-   - Use natural transitions appropriate to the story context (e.g., "A moment later", "They walked together", "As they settled into their seats", "Later that day", etc.)
-   - Add transitions when moving from one scene to the next to help viewers understand the visual change
-   - NO mention of learning English
-   - Transitions should be contextually appropriate to the story setting and flow
-
-7. Mark scene starts:
-   - line_type: "scene_marker"
-   - content: brief scene description that includes who is present
-
-8. Generate video closing (at the end):
-   - line_type: "closing"
-   - speaker_id: "NARRATOR"
-   - content: An encouraging closing script (50-100 words) that:
-     * Summarizes key points from the story
-     * Encourages practice and application
-     * Ends with a positive, motivating message
-     * Uses simple, clear English suitable for learners
-   - scene_id: null (closing is after all scenes)
-
-Output format:
-- characters: Array of character objects, each with: name, role, description, gender, age_range, personality
-- scenes: Array of scene objects, each with: scene_id, description, location
-- script_lines: Array of script line objects in chronological order:
-  * First: opening (line_type="opening")
-  * Then: scene_marker, dialogues, transitions (in story order)
-  * Last: closing (line_type="closing")
-  Each script line has: line_type, speaker, speaker_id, content, scene_id
-
-IMPORTANT REMINDERS:
-- CRITICAL: You MUST create 5-8 distinct scenes for a complete story (10-15 minute video)
-- Each scene should have a unique visual description suitable for generating different illustrations
-- Dialogues MUST be distributed across multiple scenes, not all in one scene
-- Analyze the story's natural flow and identify where visual breaks should occur based on the specific context
-- Scenes can contain any number of characters (no limit)
-- Maintain chronological order of all dialogues
-- Transition text should naturally explain scene changes and be appropriate to the story's setting
-- Opening and closing should be natural and engaging, not educational
-- Scene descriptions should be detailed enough for image generation (include setting, characters present, mood, key visual elements)
-- Adapt all scene divisions, transitions, and descriptions to fit the specific story topic and setting
-
-Return the data in the exact structure required by the Pydantic model."""),
-            ("user", "Generate a complete video script from this story. Extract ALL characters, scenes, dialogues, and create opening and closing. This is a REAL-LIFE scenario:\n\nFramework:\n{framework}\n\nDetailed Story:\n{story}")
-        ])
-        
-        # 使用结构化输出
-        structured_llm = self.llm.with_structured_output(GeneratedScript)
-        chain = prompt | structured_llm
+        return self._generate_video_script_stepwise(detailed_story, framework, scene_details, story_summary)
+    
+    def _generate_video_script_stepwise(self, detailed_story: str = None, framework: str = None, scene_details: list = None, story_summary: dict = None) -> VideoScript:
+        """分步生成视频剧本（新方式，更快）"""
+        logger.info("<cyan>Generating video script (stepwise mode - faster)</cyan>")
+        total_start_time = time.time()
         
         try:
-            result = chain.invoke({
-                "framework": framework,
-                "story": detailed_story
+            # 准备内容
+            if scene_details and story_summary:
+                scenes_text = "\n\n".join([
+                    f"=== {scene.scene_id} ===\n{scene.detailed_content}"
+                    for scene in scene_details.scenes
+                ])
+                story_content = f"""Story Summary:
+{story_summary['summary']}
+
+Characters:
+{story_summary['characters']}
+
+Detailed Scene Contents:
+{scenes_text}"""
+            else:
+                story_content = f"Framework:\n{framework}\n\nDetailed Story:\n{detailed_story}"
+            
+            # 步骤1：提取角色和场景
+            logger.info("Step 1/3: Extracting characters and scenes...")
+            step_start = time.time()
+            prompt1 = ChatPromptTemplate.from_messages([
+                ("system", GENERATE_CHARACTERS_AND_SCENES_SYSTEM),
+                ("user", GENERATE_CHARACTERS_AND_SCENES_USER)
+            ])
+            structured_llm1 = self.llm.with_structured_output(GeneratedCharactersAndScenes)
+            chain1 = prompt1 | structured_llm1
+            result1 = chain1.invoke({"content": story_content})
+            step_elapsed = time.time() - step_start
+            logger.info(f"<green>✓ Characters and scenes extracted in {step_elapsed:.2f} seconds</green>")
+            logger.info(f"  - {len(result1.characters)} characters, {len(result1.scenes)} scenes")
+            
+            # 步骤2：提取对话、转场和场景标记
+            logger.info("Step 2/3: Extracting dialogues, transitions, and scene markers...")
+            step_start = time.time()
+            # 准备场景信息（包含完整描述，用于对话分配）
+            scenes_info = "\n".join([
+                f"Scene {idx+1} ({scene.get('scene_id', '')}):\n"
+                f"Location: {scene.get('location', '')}\n"
+                f"Description: {scene.get('description', '')}"
+                for idx, scene in enumerate(result1.scenes)
+            ])
+            prompt2 = ChatPromptTemplate.from_messages([
+                ("system", GENERATE_DIALOGUES_SYSTEM),
+                ("user", GENERATE_DIALOGUES_USER)
+            ])
+            structured_llm2 = self.llm.with_structured_output(GeneratedDialogues)
+            chain2 = prompt2 | structured_llm2
+            result2 = chain2.invoke({
+                "summary": story_summary['summary'] if story_summary else "",
+                "characters": story_summary['characters'] if story_summary else "",
+                "scenes": scenes_info,
+                "scene_contents": story_content
             })
+            step_elapsed = time.time() - step_start
+            logger.info(f"<green>✓ Dialogues extracted in {step_elapsed:.2f} seconds</green>")
+            logger.info(f"  - {len(result2.script_lines)} script lines")
             
-            # 记录原始结果用于调试
-            logger.debug(f"Raw script generation result type: {type(result)}")
-            logger.debug(f"Raw characters type: {type(result.characters)}, length: {len(result.characters) if result.characters else 0}")
-            logger.debug(f"Raw scenes type: {type(result.scenes)}, length: {len(result.scenes) if result.scenes else 0}")
-            logger.debug(f"Raw script_lines type: {type(result.script_lines)}, length: {len(result.script_lines) if result.script_lines else 0}")
+            # 验证对话完整性
+            self._validate_dialogue_completeness(result2.script_lines, story_content, result1.scenes)
             
-            # 验证结果
-            if not result.characters:
-                logger.warning("Generated script has no characters")
-            else:
-                logger.info(f"Generated {len(result.characters)} characters")
-            if not result.scenes:
-                logger.warning("Generated script has no scenes")
-            else:
-                logger.info(f"Generated {len(result.scenes)} scenes")
-            if not result.script_lines:
-                logger.warning("Generated script has no script lines")
-            else:
-                logger.info(f"Generated {len(result.script_lines)} script lines")
+            # 步骤3：生成开场和结束
+            logger.info("Step 3/3: Generating opening and closing...")
+            step_start = time.time()
+            prompt3 = ChatPromptTemplate.from_messages([
+                ("system", GENERATE_OPENING_CLOSING_SYSTEM),
+                ("user", GENERATE_OPENING_CLOSING_USER)
+            ])
+            structured_llm3 = self.llm.with_structured_output(GeneratedOpeningAndClosing)
+            chain3 = prompt3 | structured_llm3
+            topic = story_summary.get('summary', '')[:100] if story_summary else ""
+            result3 = chain3.invoke({
+                "topic": topic,
+                "summary": story_summary['summary'] if story_summary else ""
+            })
+            step_elapsed = time.time() - step_start
+            logger.info(f"<green>✓ Opening and closing generated in {step_elapsed:.2f} seconds</green>")
+            
+            # 合并结果
+            all_script_lines = []
+            # 添加开场
+            if result3.opening:
+                all_script_lines.append(result3.opening)
+            # 添加对话、转场和场景标记（按时间顺序）
+            all_script_lines.extend(result2.script_lines)
+            # 添加结束
+            if result3.closing:
+                all_script_lines.append(result3.closing)
             
             # 转换为 VideoScript 对象
-            characters = self._convert_characters(result.characters)
-            scenes = self._convert_scenes(result.scenes)
-            script_lines = self._convert_script_lines(result.script_lines)
-            
-            if not characters or not script_lines:
-                logger.error(f"Video script generation incomplete: {len(characters)} characters, {len(scenes)} scenes, {len(script_lines)} script lines")
-                # 如果关键数据缺失，返回空对象
-                return VideoScript(characters=[], scenes=[], script_lines=[])
+            characters = self._convert_characters(result1.characters)
+            scenes = self._convert_scenes(result1.scenes)
+            script_lines = self._convert_script_lines(all_script_lines)
             
             video_script = VideoScript(
                 characters=characters,
@@ -180,15 +159,14 @@ Return the data in the exact structure required by the Pydantic model."""),
                 script_lines=script_lines
             )
             
-            logger.info(f"<green>Video script generated: {len(characters)} characters, {len(scenes)} scenes, {len(script_lines)} script lines</green>")
+            total_elapsed = time.time() - total_start_time
+            logger.info(f"<green>Video script generated (stepwise) in {total_elapsed:.2f} seconds: {len(characters)} characters, {len(scenes)} scenes, {len(script_lines)} script lines</green>")
             return video_script
             
         except Exception as e:
-            logger.error(f"Video script generation failed: {e}")
+            total_elapsed = time.time() - total_start_time
+            logger.error(f"Video script generation (stepwise) failed after {total_elapsed:.2f} seconds: {e}")
             logger.error(traceback.format_exc())
-            # 记录详细错误信息
-            logger.warning("Returning empty video script due to generation failure")
-            # 返回空剧本而不是 None，避免后续错误
             return VideoScript(characters=[], scenes=[], script_lines=[])
     
     def _convert_characters(self, characters_data) -> list:
@@ -309,4 +287,80 @@ Return the data in the exact structure required by the Pydantic model."""),
                 logger.error(f"Failed to create script line from {line}: {e}")
                 logger.debug(traceback.format_exc())
         return script_lines
+    
+    def _validate_dialogue_completeness(self, script_lines: list, story_content: str, scenes: list):
+        """
+        验证对话提取的完整性
+        
+        Args:
+            script_lines: 提取的剧本行列表
+            story_content: 原始故事内容
+            scenes: 场景列表
+        """
+        try:
+            # 统计每个场景的对话数量
+            scene_dialogue_count = {}
+            dialogue_count = 0
+            short_dialogues = []  # 短对话（可能被遗漏的反应词）
+            
+            for line in script_lines:
+                if isinstance(line, dict):
+                    line_type = line.get('line_type', '')
+                    scene_id = line.get('scene_id', 'unknown')
+                    content = line.get('content', '')
+                else:
+                    # 如果是对象，尝试获取属性
+                    line_type = getattr(line, 'line_type', '')
+                    scene_id = getattr(line, 'scene_id', 'unknown')
+                    content = getattr(line, 'content', '')
+                
+                if line_type == 'dialogue':
+                    dialogue_count += 1
+                    if scene_id:
+                        scene_dialogue_count[scene_id] = scene_dialogue_count.get(scene_id, 0) + 1
+                    
+                    # 检查短对话（可能是反应词）
+                    if content and len(content.strip()) <= 10:
+                        short_dialogues.append(content.strip())
+            
+            # 统计场景数量
+            scene_count = len(scenes) if scenes else 0
+            
+            # 输出验证信息
+            logger.info(f"<cyan>Dialogue completeness validation:</cyan>")
+            logger.info(f"  - Total dialogues extracted: {dialogue_count}")
+            logger.info(f"  - Total scenes: {scene_count}")
+            logger.info(f"  - Dialogues per scene: {dict(scene_dialogue_count)}")
+            
+            # 检查是否有场景缺少对话
+            scenes_with_dialogues = set(scene_dialogue_count.keys())
+            if scene_count > 0:
+                expected_scenes = {f"scene_{i+1}" for i in range(scene_count)}
+                missing_scenes = expected_scenes - scenes_with_dialogues
+                if missing_scenes:
+                    logger.warning(f"  - ⚠️ Scenes without dialogues: {missing_scenes}")
+                else:
+                    logger.info(f"  - ✓ All scenes have dialogues")
+            
+            # 检查短对话（反应词）
+            if short_dialogues:
+                logger.info(f"  - Short dialogues/reactions found: {len(short_dialogues)}")
+                logger.debug(f"    Examples: {short_dialogues[:5]}")
+            
+            # 基本完整性检查
+            if dialogue_count == 0:
+                logger.warning("  - ⚠️ WARNING: No dialogues extracted!")
+            elif dialogue_count < scene_count * 2:
+                logger.warning(f"  - ⚠️ WARNING: Very few dialogues ({dialogue_count}) for {scene_count} scenes. Expected at least {scene_count * 2} dialogues.")
+            else:
+                logger.info(f"  - ✓ Dialogue count looks reasonable")
+            
+            # 检查故事内容中是否包含对话标记（引号）
+            quote_count = story_content.count("'") + story_content.count('"')
+            if quote_count > 0 and dialogue_count < quote_count / 4:
+                logger.warning(f"  - ⚠️ WARNING: Story contains {quote_count} quote marks but only {dialogue_count} dialogues extracted. Some dialogues may be missing.")
+            
+        except Exception as e:
+            logger.warning(f"Dialogue validation failed: {e}")
+            logger.debug(traceback.format_exc())
 
