@@ -21,6 +21,8 @@ class FileOperations:
         """
         保存生成进度（增量保存）
         
+        每个步骤完成后立即保存 JSON 和 Markdown 文件，确保及时输出
+        
         Args:
             story_content: 当前的故事内容对象（可能不完整）
             base_path: 基础文件路径（不含扩展名）
@@ -30,6 +32,15 @@ class FileOperations:
         # 确保输出目录存在
         if output_dir and output_dir != ".":
             os.makedirs(output_dir, exist_ok=True)
+        
+        # 每个步骤完成后，立即保存完整的 JSON 文件（即使内容不完整）
+        json_file = f"{base_path}.json"
+        try:
+            with open(json_file, 'w', encoding='utf-8') as f:
+                f.write(story_content.to_json())
+            logger.info(f"✓ Progress saved: {json_file} (step: {step_name})")
+        except Exception as e:
+            logger.warning(f"Failed to save progress JSON: {e}")
         
         # 如果生成了新内容，立即保存对应的 Markdown
         # 文件名不包含时间戳，使用固定的文件名
@@ -41,6 +52,27 @@ class FileOperations:
                 f.write(f"---\n\n")
                 f.write(f"{story_content.story_framework}\n")
             logger.info(f"✓ Framework saved: {framework_md}")
+        
+        elif step_name == "summary" and story_content.summary:
+            # 保存概要的 Markdown
+            summary_md = os.path.join(output_dir, "summary.md")
+            with open(summary_md, 'w', encoding='utf-8') as f:
+                f.write(f"# Story Summary\n\n")
+                f.write(f"**Topic:** {story_content.topic}\n\n")
+                f.write(f"---\n\n")
+                f.write(f"{story_content.summary}\n")
+            logger.info(f"✓ Summary saved: {summary_md}")
+        
+        elif step_name == "scene_descriptions":
+            # 场景描述已包含在 story.json 中，可以单独保存一个 Markdown
+            if story_content.story_framework:
+                scenes_md = os.path.join(output_dir, "scene_descriptions.md")
+                with open(scenes_md, 'w', encoding='utf-8') as f:
+                    f.write(f"# Scene Descriptions\n\n")
+                    f.write(f"**Topic:** {story_content.topic}\n\n")
+                    f.write(f"---\n\n")
+                    f.write(f"{story_content.story_framework}\n")
+                logger.info(f"✓ Scene descriptions saved: {scenes_md}")
         
         elif step_name == "detailed_story" and story_content.detailed_story:
             story_md = os.path.join(output_dir, "story.md")

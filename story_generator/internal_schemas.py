@@ -73,3 +73,96 @@ class GeneratedOpeningAndClosing(BaseModel):
     opening: dict = Field(description="Opening script line with line_type='opening', speaker_id='NARRATOR', content, scene_id=null")
     closing: dict = Field(description="Closing script line with line_type='closing', speaker_id='NARRATOR', content, scene_id=null")
 
+
+class CharacterVisualSeed(BaseModel):
+    """角色视觉种子"""
+    character_name: str = Field(description="Character name")
+    visual_prompt: str = Field(description="Fixed image prompt for this character, e.g., '30s, navy blue scrubs, messy bun, tired eyes'")
+
+
+class GeneratedVisualSeeds(BaseModel):
+    """生成的视觉种子列表"""
+    visual_seeds: List[CharacterVisualSeed] = Field(description="List of visual seeds for all characters, extracted from Scene 1")
+
+
+# ============================================================================
+# 新的结构化剧本生成 Schema（直接生成对话，不需要后续提取）
+# ============================================================================
+
+class ScriptLineItem(BaseModel):
+    """单个剧本行"""
+    line_type: str = Field(description="Type: 'dialogue' for character speech, 'narration' for narrator/action description, 'scene_marker' for scene start")
+    speaker: str = Field(default="", description="Speaker name for dialogue (e.g., 'Elena', 'Leo'). Empty for narration/scene_marker")
+    content: str = Field(description="The actual text content")
+
+
+class SceneWithScript(BaseModel):
+    """带剧本的完整场景"""
+    scene_id: str = Field(description="Scene ID (e.g., scene_1, scene_2)")
+    location: str = Field(description="Where the scene takes place")
+    visual_description: str = Field(description="DETAILED visual description for image generation (200-300 words): lighting, colors, character positions, expressions, clothing, atmosphere")
+    script_lines: list[ScriptLineItem] = Field(description="List of script lines in chronological order. Include scene_marker at start, then mix of dialogues and narrations")
+
+
+class GeneratedScenesWithScript(BaseModel):
+    """生成的所有场景（带剧本）"""
+    scenes: list[SceneWithScript] = Field(description="List of 5-8 complete scenes with visual descriptions and script lines")
+
+
+class GeneratedCharacterInfo(BaseModel):
+    """生成的角色信息"""
+    name: str = Field(description="Character's full name (e.g., 'Elena Rodriguez')")
+    role: str = Field(description="'main' for protagonists, 'supporting' for secondary characters")
+    gender: str = Field(description="'male', 'female', or 'other'")
+    age_range: str = Field(description="'child', 'young', 'adult', or 'elderly'")
+    description: str = Field(description="Detailed visual description: appearance, clothing, mannerisms, expressions")
+    personality: str = Field(description="Brief personality traits that affect speech style")
+
+
+class GeneratedFullScript(BaseModel):
+    """完整的故事剧本（一次性生成）"""
+    characters: list[GeneratedCharacterInfo] = Field(description="List of all characters in the story")
+    scenes: list[SceneWithScript] = Field(description="List of 5-8 complete scenes with visual descriptions and script lines")
+    opening_narration: str = Field(description="Opening narration to introduce the story (2-4 sentences, natural and engaging)")
+    closing_narration: str = Field(description="Closing narration to wrap up the story (2-4 sentences, subtle and non-preachy)")
+
+
+# ============================================================================
+# 流式生成 Schema（逐场景生成，避免表达重复）
+# ============================================================================
+
+class GeneratedSceneBrief(BaseModel):
+    """场景简述（用于规划）"""
+    scene_id: str = Field(description="Scene ID (e.g., scene_1, scene_2)")
+    location: str = Field(description="Where the scene takes place")
+    brief_content: str = Field(description="What happens in this scene in 1-2 sentences")
+    target_expressions: List[str] = Field(description="1-2 key expressions to use in THIS scene ONLY")
+
+
+class GeneratedScenePlan(BaseModel):
+    """场景规划（分配关键表达）"""
+    scenes: List[GeneratedSceneBrief] = Field(description="List of 5-8 scene briefs with assigned expressions")
+
+
+class GeneratedSingleScene(BaseModel):
+    """单个场景的完整内容（流式生成）"""
+    scene_id: str = Field(description="Scene ID (e.g., scene_1)")
+    location: str = Field(description="Where the scene takes place")
+    visual_description: str = Field(description="DETAILED visual description for image generation (200-300 words)")
+    script_lines: list[ScriptLineItem] = Field(description="List of script lines in chronological order")
+    used_expressions: List[str] = Field(description="List of key expressions actually used in this scene")
+    common_phrases_used: List[str] = Field(default=[], description="List of common phrases/responses used in this scene (e.g., 'Deal', 'Fair enough', 'No worries') for deduplication")
+    scene_ending_state: str = Field(description="Brief description of how this scene ends (character positions, emotional states, ongoing topics) - used for continuity in next scene")
+    scene_summary: str = Field(default="", description="Brief 1-2 sentence summary of what happened in this scene (for content deduplication)")
+
+
+class GeneratedCharactersOnly(BaseModel):
+    """仅生成角色信息（流式生成第一步）"""
+    characters: list[GeneratedCharacterInfo] = Field(description="List of all characters in the story")
+
+
+class GeneratedNarrations(BaseModel):
+    """生成开场和结束旁白"""
+    opening_narration: str = Field(description="Opening narration to introduce the story (2-4 sentences)")
+    closing_narration: str = Field(description="Closing narration to wrap up the story (2-4 sentences, subtle)")
+

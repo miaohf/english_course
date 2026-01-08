@@ -110,7 +110,17 @@ class VideoScript(BaseModel):
         # 按照 characters 列表的顺序分配 SPEAKER0, SPEAKER1, SPEAKER2...
         name_to_speaker = {}
         for idx, char in enumerate(self.characters):
-            name_to_speaker[char.name] = f"SPEAKER{idx}"
+            # 同时映射完整名称和可能的简称
+            full_name = char.name
+            name_to_speaker[full_name] = f"SPEAKER{idx}"
+            # 如果名称包含空格，也映射第一个词（简称）
+            if ' ' in full_name:
+                first_name = full_name.split()[0]
+                name_to_speaker[first_name] = f"SPEAKER{idx}"
+            # 也映射小写版本（大小写不敏感匹配）
+            name_to_speaker[full_name.lower()] = f"SPEAKER{idx}"
+            if ' ' in full_name:
+                name_to_speaker[first_name.lower()] = f"SPEAKER{idx}"
         
         for line in self.script_lines:
             # 检查场景切换
@@ -127,22 +137,52 @@ class VideoScript(BaseModel):
                 # 开场白使用 NARRATOR
                 lines.append(f"[NARRATOR] {line.content}")
             elif line.line_type == "dialogue":
-                # 获取说话人名称
+                # 跳过没有说话人的对话行
                 speaker_name = line.speaker or line.speaker_id
-                if speaker_name:
-                    # 如果已经是 SPEAKER 格式，直接使用
-                    if speaker_name.startswith("SPEAKER"):
-                        speaker_id = speaker_name
-                    else:
-                        # 从映射中获取 SPEAKER ID，如果找不到则使用原名称
-                        speaker_id = name_to_speaker.get(speaker_name, speaker_name)
-                        # 如果仍然不是 SPEAKER 格式，尝试按顺序分配
-                        if not speaker_id.startswith("SPEAKER"):
-                            # 为未映射的角色分配新的 SPEAKER ID
-                            max_idx = len(self.characters)
-                            speaker_id = f"SPEAKER{max_idx}"
-                            name_to_speaker[speaker_name] = speaker_id
-                    lines.append(f"[{speaker_id}] {line.content}")
+                if not speaker_name:
+                    continue
+                
+                content = line.content.strip()
+                if not content:
+                    continue
+                
+                # 如果已经是 SPEAKER 格式，直接使用
+                if speaker_name.startswith("SPEAKER"):
+                    speaker_id = speaker_name
+                else:
+                    # 从映射中获取 SPEAKER ID（支持完整名称、简称、大小写不敏感）
+                    speaker_id = name_to_speaker.get(speaker_name) or name_to_speaker.get(speaker_name.lower())
+                    
+                    # 如果仍然找不到，尝试模糊匹配（检查是否包含在角色名称中）
+                    if not speaker_id:
+                        for char in self.characters:
+                            char_idx = self.characters.index(char)
+                            # 检查 speaker_name 是否在角色名称中，或角色名称是否在 speaker_name 中
+                            if (speaker_name.lower() in char.name.lower() or 
+                                char.name.lower() in speaker_name.lower() or
+                                speaker_name.lower() == char.name.split()[0].lower()):
+                                speaker_id = f"SPEAKER{char_idx}"
+                                # 缓存这个映射
+                                name_to_speaker[speaker_name] = speaker_id
+                                name_to_speaker[speaker_name.lower()] = speaker_id
+                                break
+                    
+                    # 如果仍然不是 SPEAKER 格式，尝试按顺序分配
+                    if not speaker_id or not speaker_id.startswith("SPEAKER"):
+                        # 为未映射的角色分配新的 SPEAKER ID
+                        max_idx = len(self.characters)
+                        speaker_id = f"SPEAKER{max_idx}"
+                        name_to_speaker[speaker_name] = speaker_id
+                
+                # 确保对话内容有适当的标点符号
+                # 如果内容不为空且不以标点符号结尾，添加句号
+                # 但保留已有的标点符号（., !, ?, ,, ...）
+                if content and not content[-1] in '.!?,。，！？…':
+                    # 检查是否以省略号结尾（三个点）
+                    if not content.endswith('...'):
+                        content = content + '.'
+                
+                lines.append(f"[{speaker_id}] {content}")
             elif line.line_type == "transition":
                 # 转场旁白使用 NARRATOR
                 lines.append(f"[NARRATOR] {line.content}")
@@ -172,6 +212,7 @@ class StoryContent(BaseModel):
     key_sentences: List[str] = Field(description="Key English sentences from the story")
     new_words: List[WordItem] = Field(default_factory=list, description="New vocabulary words")
     video_script: Optional[VideoScript] = Field(default=None, description="视频剧本（包含角色、场景、对话）")
+    metadata: Optional[dict] = Field(default_factory=dict, description="元数据，包含视觉种子等信息")
     
     def to_dict_clean(self) -> dict:
         """
