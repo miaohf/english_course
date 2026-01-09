@@ -7,13 +7,17 @@ requires-python = ">=3.12"
 dependencies = [
     "requests>=2.31.0",
     "python-dotenv>=1.0.0",
+    "pydantic>=2.0",
+    "loguru>=0.7.0",
     "langchain>=1.2.0",
     "langchain-openai>=0.3.0",
-    "loguru>=0.7.0",
-    "pydantic>=2.0",
+    "edge-tts>=6.1.0",
+    "mutagen>=1.47.0",
+    "pillow>=10.0.0",
 ]
 
 [[tool.uv.index]]
 name = "tsinghua"
 url = "https://pypi.tuna.tsinghua.edu.cn/simple/"
 default = true
+

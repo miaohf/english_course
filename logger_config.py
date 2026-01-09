@@ -140,14 +140,15 @@ def get_logger():
         
         def __getattr__(self, name):
             attr = getattr(self._logger, name)
-            if callable(attr) and name in ['info', 'success', 'warning', 'error', 'debug']:
+            if callable(attr) and name in ['info', 'success', 'warning', 'error', 'debug', 'critical']:
                 # 对于日志方法，自动转换颜色标签
                 def wrapper(*args, **kwargs):
                     # 转换第一个参数（消息）中的颜色标签
                     if args and isinstance(args[0], str):
                         converted_msg = convert_color_tags(args[0])
-                        return attr(converted_msg, *args[1:], **kwargs)
-                    return attr(*args, **kwargs)
+                        # 使用 opt(depth=1) 跳过 wrapper 层级，显示真实调用位置
+                        return self._logger.opt(depth=1).__getattribute__(name)(converted_msg, *args[1:], **kwargs)
+                    return self._logger.opt(depth=1).__getattribute__(name)(*args, **kwargs)
                 return wrapper
             return attr
     
