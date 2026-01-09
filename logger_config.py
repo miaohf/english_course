@@ -88,10 +88,11 @@ def setup_logger(
     # 使用 loguru 格式，支持消息中的颜色标记
     # 控制台输出 - 启用颜色，支持消息中的颜色标签
     # 注意：{message} 不使用 <level> 包装，以允许消息中的颜色标签生效
+    # 使用 {file.name}:{line} 格式以便 IDE 识别并跳转（相对路径）
     if enable_console:
         logger.add(
             sys.stderr,
-            format="<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> | {message}",
+            format="<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <cyan>{file.name}</cyan>:<cyan>{line}</cyan> | {message}",
             level=log_level,
             colorize=True,
             backtrace=True,
@@ -113,7 +114,7 @@ def setup_logger(
         
         logger.add(
             log_file,
-            format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {name}:{function}:{line} | {message}",
+            format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {file.name}:{line} | {message}",
             level=log_level,
             rotation=rotation,
             retention=retention,

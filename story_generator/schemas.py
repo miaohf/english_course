@@ -10,7 +10,7 @@ class WordItem(BaseModel):
     """单词/短语项"""
     word: str = Field(..., description="英文单词或短语")
     phonetic: Optional[str] = Field(None, description="音标")
-    chinese: str = Field(..., description="中文释义")
+    chinese: Optional[str] = Field(None, description="中文释义")
     example: Optional[str] = Field(None, description="例句")
 
 
@@ -31,7 +31,7 @@ class ScriptLine(BaseModel):
     id: str = Field(..., description="台词ID，如 scene_1_001")
     speaker: str = Field(..., description="说话人：narrator / character_1 / character_2")
     text: str = Field(..., description="英文台词")
-    chinese: str = Field(..., description="中文翻译")
+    chinese: Optional[str] = Field(None, description="中文翻译（可选，后期添加）")
     emotion: Optional[str] = Field(None, description="情感/语气")
     action: Optional[str] = Field(None, description="伴随动作描述")
 
